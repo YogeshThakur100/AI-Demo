@@ -1,0 +1,6 @@
+__pycache__/
+Crawl Document/
+env/
+.vscode/
+Vector Database/
+.env
