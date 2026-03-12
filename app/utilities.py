@@ -5,13 +5,9 @@ import smtplib
 class Utilities_class:
     sender_email = "gunadhya.ai@gmail.com"
     sender_password = "zdsn pelr qywo uexl"
-    #To send the email I am using the smtp library
-    #Just to configure and login using the script in gmail for sending mails 
-    #We have to create the App password from gmail and add the password below
     @staticmethod
     def send_email_ai_response(email : str , query : str):
 
-        #sender informatio and other necessary stuff
         subject = "Unresolved Query - AI Chatbot Support Required"
         
         html_body = f"""
@@ -58,7 +54,6 @@ class Utilities_class:
         </html>
         """
 
-        #club it into msg form
         msg = MIMEMultipart('alternative')
         msg["From"] = Utilities_class.sender_email
         msg["To"] = email
@@ -66,7 +61,6 @@ class Utilities_class:
         msg.attach(MIMEText(html_body, 'html'))
 
         try:
-             #send the mail user smtplib server
             server = smtplib.SMTP('smtp.gmail.com' , 587)
             server.starttls()
             server.login(Utilities_class.sender_email , Utilities_class.sender_password)

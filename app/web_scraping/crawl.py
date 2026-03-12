@@ -64,9 +64,12 @@ def _fetch_html(url: str, headers: dict, use_js: bool = False):
 
 
 def extract_information(urls_to_visit, headers, data, crawl_document_path, use_js: bool = True):
-    while urls_to_visit:
+    count = 0
+    while urls_to_visit and count <= 20:
         webpage = urls_to_visit.pop()
         html = _fetch_html(webpage, headers=headers, use_js=use_js)
+        print(f"total count of pages crawled {count} and currently crawling {webpage}")
+        count += 1
         if not html:
             print(f"❌ Skipping {webpage} (fetch/render failed)")
             continue
