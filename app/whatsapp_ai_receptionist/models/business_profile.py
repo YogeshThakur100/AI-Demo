@@ -1,5 +1,5 @@
 from database import Base
-from sqlalchemy import UUID , Column , String , TIMESTAMP , JSON
+from sqlalchemy import UUID , Column , String , TIMESTAMP , JSON , ForeignKey , Float , Boolean
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from typing import List
@@ -17,12 +17,13 @@ class BusinessProfile(Base):
     officeHours = Column(String, nullable=True)
     services = Column(JSON, nullable=True)
     personaSelector = Column(String, nullable=True) 
+    usePreLoadedVerticals = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP(timezone=True) , default=None)
 
 class PreLoadedVerticalClinic(Base):
     __tablename__ = "preloaded_verticals_clinic"
     id = Column(UUID , primary_key=True , unique=True , index= True , default=uuid.uuid4)
-    question_name = Column(String , nullable=False)
+    question = Column(String , nullable=False)
     answer = Column(String , nullable=False)
     created_at = Column(TIMESTAMP(timezone=True) , default=None)
 
@@ -30,6 +31,26 @@ class PreLoadedVerticalClinic(Base):
 class PreLoadedVerticalCACS(Base):
     __tablename__ = "preloaded_verticals_cacs"
     id = Column(UUID , primary_key=True , unique=True , index= True , default=uuid.uuid4)
-    question_name = Column(String , nullable=False)
+    question = Column(String , nullable=False)
     answer = Column(String , nullable=False)
     created_at = Column(TIMESTAMP(timezone=True) , default=None)
+
+class Manual(Base):
+    __tablename__ = "manual_faqs"
+    id = Column(UUID , primary_key=True , unique=True , index= True , default = uuid.uuid4)
+    business_id = Column(UUID, ForeignKey("business_profiles.id" , ondelete="CASCADE") ,nullable=False)
+    question = Column(String , nullable=False)
+    answer = Column(String , nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True) , default=None)
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id = Column(UUID , primary_key=True , unique=True , index= True , default = uuid.uuid4)
+    business_id = Column(UUID, ForeignKey("business_profiles.id" , ondelete="CASCADE"))
+    phone_number = Column(String , nullable=False)
+    user_message = Column(String , nullable=False)
+    bot_response = Column(String , nullable=False)
+    response_time = Column(Float , nullable=True)
+    escalated = Column(Boolean , nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True) , default=None)
+

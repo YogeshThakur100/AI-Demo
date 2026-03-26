@@ -16,3 +16,6 @@ langchain-google-genai==2.0.3
 langchain-openai==0.2.11
 langchain-text-splitters==0.3.8
 psycopg2==2.9.11
+pandas==3.0.1
+gspread==6.2.1
+oauth2client==4.1.3

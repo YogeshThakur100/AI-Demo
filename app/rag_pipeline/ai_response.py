@@ -1,9 +1,9 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from prompts import clinic_prompt
+from prompts import clinic_prompt , ca_firm_prompt
 from langchain.chains import LLMChain
 import utilities
-from whatsapp_ai_receptionist.models.business_profile import BusinessProfile , PreLoadedVerticalClinic , PreLoadedVerticalCACS
+from whatsapp_ai_receptionist.models.business_profile import BusinessProfile , PreLoadedVerticalClinic , PreLoadedVerticalCACS , Manual
 import json
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -24,9 +24,9 @@ def get_preloaded_faqs(db: Session, persona: str):
     
     try:
         # Use existing helper methods that query the database correctly
-        if persona == "Clinic":
+        if persona == "clinic":
             faqs_data = get_preloaded_faqs_clinic(db)
-        elif persona == "CACS":
+        elif persona == "ca_firm":
             faqs_data = get_preloaded_faqs_cacs(db)
         else:
             return ""
@@ -41,7 +41,7 @@ def get_preloaded_faqs(db: Session, persona: str):
         
         faq_text = f"\n\n=== PRELOADED {persona.upper()} FAQs ===\n"
         for faq in faqs_data:
-            question = faq.get("question_name", "")
+            question = faq.get("question", "")
             answer = faq.get("answer", "")
             if question and answer:
                 faq_text += f"\nQ: {question}\nA: {answer}\n"
@@ -53,29 +53,15 @@ def get_preloaded_faqs(db: Session, persona: str):
         print(f"⚠️ Error loading preloaded FAQs: {e}")
         return ""
 
-def get_business_info(company_name : str , db : Session):
+def get_business_info(db : Session):
     # if company_name not in business_info_cache:
-        business_info = db.query(BusinessProfile).filter(BusinessProfile.businessName == company_name).first()
-        if business_info:
-            business_info_cache[company_name] = {
-                "business_name": (business_info.businessName or "Not found in database"),
-                "business_phone_number": (business_info.phoneNumber or "Not found in database"),
-                "business_email": (business_info.email or "Not found in database"),
-                "business_address": (business_info.address or "Not found in database"),
-                "business_working_hours": (business_info.officeHours or "Not found in database"),
-                "business_services": (business_info.services or "Not found in database"),
-                "persona" : (business_info.personaSelector or "Not found in database")
-            }
-        else:
-            return {
-                "error": "Business information not found"
-            }
-        return business_info_cache.get(company_name, {})
+        business_info = db.query(BusinessProfile).first()
+        return business_info
 
 def get_preloaded_faqs_clinic(db: Session):
     try:
         faqs = db.query(PreLoadedVerticalClinic).all()
-        data = [{"question_name": faq.question_name, "answer": faq.answer} for faq in faqs]
+        data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
         return data
     except Exception as e:
         print(f"❌ Error retrieving preloaded FAQs: {e}")
@@ -84,52 +70,59 @@ def get_preloaded_faqs_clinic(db: Session):
 def get_preloaded_faqs_cacs(db: Session):
     try:
         faqs = db.query(PreLoadedVerticalCACS).all()
-        data = [{"question_name": faq.question_name, "answer": faq.answer} for faq in faqs]
+        data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
         return data
     except Exception as e:
         print(f"❌ Error retrieving preloaded FAQs: {e}")
         return {"status": "error", "message": str(e)}
+    
+def get_manual_faqs(db: Session):
+    try:
+        faqs = db.query(Manual).all()
+        if faqs:
+            faq_text = ""
+            for faq in faqs:
+                faq_text += f"\nQ: {faq.question}\nA: {faq.answer}\n"
+            return faq_text
+        else:
+            return ""
+    except Exception as e:
+        print(f"❌ Error retrieving manual FAQs: {e}")
+        return {"status": "error", "message": str(e)}
 
-def create_rag_qa(vectorstore, query, session_id , company_email = None):
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+def create_rag_qa( query, session_id ,vectorstore=None, company_email = "yogeshthaur3100@gmail.com"):
+    print("Vector store --->" , vectorstore)
+    if vectorstore:
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
    
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
     db = SessionLocal()
     try:
-        business_info = get_business_info(company_name="Medical Network Pvt Ltd", db=db)
+        business_info = get_business_info(db=db)
         print(f"\n✅ Business info retrieved: {business_info}")
         
-        # Get vectorstore context
-        relevant_docs = retriever.get_relevant_documents(query)
-        vectorstore_context = "\n\n".join([doc.page_content for doc in relevant_docs])
-        
+        if vectorstore:
+            relevant_docs = retriever.get_relevant_documents(query)
+            vectorstore_context = "\n\n".join([doc.page_content for doc in relevant_docs])
+            print(f"📄 Found {len(relevant_docs)} relevant documents from vectorstore")
+            print(f"📝 Vectorstore context length: {len(vectorstore_context)} characters")
         print(f"\n📄 Query: {query}")
-        print(f"📄 Found {len(relevant_docs)} relevant documents from vectorstore")
-        print(f"📝 Vectorstore context length: {len(vectorstore_context)} characters")
         
-        # Get preloaded FAQs as secondary source
-        persona = "Clinic"
-        preloaded_faqs = get_preloaded_faqs(db, persona)
+        persona = business_info.business_type if business_info.business_type else "clinic"
+        preloaded_faqs = ""
+        if business_info.usePreLoadedVerticals:
+            preloaded_faqs = get_preloaded_faqs(db, persona)
         print(f"📚 Loaded preloaded FAQs ({persona}): {len(preloaded_faqs)} characters")
-        
-        # Combine contexts: PRIORITY 1 = vectorstore, PRIORITY 2 = preloaded FAQs
-        if vectorstore_context.strip():
-            # Use vectorstore context, with FAQs as supplementary
-            context = vectorstore_context
-            if preloaded_faqs and len(vectorstore_context) < 2000:  # If vectorstore context is limited, add FAQs
-                context += preloaded_faqs
-        else:
-            # Fallback to preloaded FAQs if vectorstore has no results
-            print("⚠️ No relevant documents found in vectorstore, using preloaded FAQs")
-            context = preloaded_faqs if preloaded_faqs else "No information available."
-        
-        print(f"📖 Final context length: {len(context)} characters")
+
+        manual_faqs = get_manual_faqs(db)
+        print(f"📚 Loaded manual FAQs: {len(manual_faqs)} characters")
+        manual_faqs = manual_faqs
         
     finally:
         db.close()
 
-    chain = LLMChain(llm=llm, prompt=clinic_prompt)
+    chain = LLMChain(llm=llm, prompt=clinic_prompt if persona == "clinic" else ca_firm_prompt)
 
     if session_id not in chat_history_store:
         chat_history_store[session_id] = []
@@ -145,32 +138,36 @@ def create_rag_qa(vectorstore, query, session_id , company_email = None):
 
     try:
         result = chain.invoke({
-            "context": context,
+            "manual_faqs": manual_faqs,
+            "vectorstore_context" : vectorstore_context if vectorstore else "No vectorstore context available",
+            "preloaded_faqs" : preloaded_faqs,
             "question": full_question,
-            "clinic_name": business_info.get("business_name", "N/A"),
-            "clinic_phone": business_info.get("business_phone_number", "N/A"),
-            "clinic_email": business_info.get("business_email", "N/A"),
-            "clinic_address": business_info.get("business_address", "N/A"),
-            "clinic_hours": business_info.get("business_working_hours", "N/A"),
-            "clinic_services": business_info.get("business_services", "N/A"),
-            "persona" : business_info.get("persona", "Not found in database")
+            "name": business_info.businessName if business_info.businessName else "Not found in database",
+            "phone": business_info.phoneNumber if business_info.phoneNumber else "Not found in database",
+            "email": business_info.email if business_info.email else "Not found in database",
+            "address": business_info.address if business_info.address else "Not found in database",
+            "hours": business_info.officeHours if business_info.officeHours else "Not found in database",
+            "services": business_info.services if business_info.services else "Not found in database",
+            "persona" : business_info.personaSelector if business_info.personaSelector else "Not found in database"
         })
         
         response_text = result.get("text", "")
-        print(f"✅ Response generated: {response_text[:100]}...")
+        print(f"✅ Response gene rated: {response_text[:100]}...")
         
     except Exception as e:
         print(f"❌ Error generating response: {e}")
         response_text = "Sorry, I'm unable to process your request right now. Please try again later."
 
+    escalated = False
     if "We don't have the information currently" in response_text and company_email:
         print("❓ Unknown question asked, sending email to admin...")
         print(f"Company email to notify: {company_email}")
-        try:
-            utilities.Utilities_class.send_email_ai_response(company_email, query)
-            print("✅ Email sent successfully")
-        except Exception as e:
-            print(f"⚠️ Failed to send email: {e}")
+        escalated = True
+        # try:
+        #     utilities.Utilities_class.send_email_ai_response(company_email, query)
+        #     print("✅ Email sent successfully")
+        # except Exception as e:
+        #     print(f"⚠️ Failed to send email: {e}")
     
     chat_history_store[session_id].append(f"User: {query}")
     chat_history_store[session_id].append(f"Assistant: {response_text}")
@@ -179,7 +176,8 @@ def create_rag_qa(vectorstore, query, session_id , company_email = None):
         chat_history_store[session_id] = chat_history_store[session_id][-20:]
     
     return {
-        "answer": response_text
+        "answer": response_text,
+        "escalated" : escalated
     }
 
 
