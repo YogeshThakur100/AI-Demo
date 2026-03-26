@@ -4,3 +4,4 @@ env/
 .vscode/
 Vector Database/
 .env
+service-account-key.json
