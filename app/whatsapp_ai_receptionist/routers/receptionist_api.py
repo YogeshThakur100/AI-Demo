@@ -751,8 +751,9 @@ async def whatsapp_webhook(request: Request , db : Session = Depends(get_db)):
             print(f"Form data submitted by {sender}: {form_data}")
             new_data = {
                 "name" : form_data.get("name", "N/A"),
+                "doctor" : form_data.get("doctor", "N/A"),
+                "day" : form_data.get("day", "N/A"),
                 "time" : form_data.get("time", "N/A"),
-                "reason" : form_data.get("reason", "N/A"),
                 "phone" : form_data.get("phone", "N/A"),
             }
             df = pd.DataFrame([new_data])

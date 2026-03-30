@@ -95,7 +95,7 @@ def create_rag_qa( query, session_id ,vectorstore=None, company_email = "yogesht
     if vectorstore:
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
    
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
     db = SessionLocal()
     try:
