@@ -10,8 +10,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from database import get_db
 from sqlalchemy.orm import Session
-from whatsapp_ai_receptionist.models.business_profile import BusinessProfile , PreLoadedVerticalClinic , PreLoadedVerticalCACS , Manual , Conversation
-from whatsapp_ai_receptionist.schemas.business_schemas import businessProfile , PreLoadedVerticalFAQSClinic , PreLoadedVerticalFAQSCACS , ManualFAQS
+from website_ai.models.business_profile import BusinessProfileWebsiteAI , PreLoadedVerticalClinicWebsiteAI , PreLoadedVerticalCACSWebsiteAI , ManualWebsiteAI , ConversationWebsiteAI
+from website_ai.schemas.business_schemas import businessProfile_Website_ai , PreLoadedVerticalFAQSClinic_Website_ai , PreLoadedVerticalFAQSCACS_Website_ai , ManualFAQS_Website_ai
 import os
 import uuid
 from datetime import datetime
@@ -23,48 +23,30 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 
+
 app = APIRouter()
-
-load_dotenv(find_dotenv())
-
-#webhook access token 
-VERIFY_TOKEN = os.getenv('ACCESS_TOKEN')
-
-# Define scope
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
 
 #vector store paths
 current_directory = Path(__file__).parent.parent
 crawling_document_path = os.path.join(current_directory , "Crawl Document")
+if not os.path.exists(crawling_document_path):
+    os.makedirs(crawling_document_path)
 vector_store_path = os.path.join(current_directory, "Vector Database")
-file_path = os.path.join(vector_store_path , "whatsapp_ai_receptionist")
+if not os.path.exists(vector_store_path):
+    os.makedirs(vector_store_path)
+file_path = os.path.join(vector_store_path , "website_ai")
 index_file_path = os.path.join(file_path , "index.faiss")
-
-# Load credentials
-creds = ServiceAccountCredentials.from_json_keyfile_name(
-    os.path.join(Path(__file__).parent, "service-account-key.json"), scope
-)
-
-client = gspread.authorize(creds)
-
-# Open Google Sheet
-sheet = client.open_by_key("1LMyoMPYHRbs52sxZP8M-nuKPPIZ98UI0VrTanpqoVsU").sheet1
-
 
 #embeddings for rag
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-@app.get("/status")
+@app.get('/status')
 def get_status():
-    return ("status" , "Receptionist API is running")
-
+    return {"status" : "Website AI is up and running!"}
 
 @app.post('/crawling-website')
 def crawling_website(url: str , db : Session = Depends(get_db)):
-    business_profile = db.query(BusinessProfile).first()
+    business_profile = db.query(BusinessProfileWebsiteAI).first()
     if business_profile:
         return JSONResponse(
             status_code=400,
@@ -73,7 +55,7 @@ def crawling_website(url: str , db : Session = Depends(get_db)):
                 "message" : "Please delete the exisiting business profile to add new one"
             }
         )
-    crawling_document_name = os.path.join(crawling_document_path , "whatsapp_ai_receptionist.txt")
+    crawling_document_name = os.path.join(crawling_document_path , "website_ai.txt")
     try:
         crawl_document = crawl.crawler(url , crawl_document_path=crawling_document_name)
         print(f"✅ Successfully crawled {url} and crawled urls {crawl_document}")
@@ -97,7 +79,7 @@ def crawling_website(url: str , db : Session = Depends(get_db)):
     response = ai_response.get_business_profile(vectorstore)
 
     try:
-        new_business_profile = BusinessProfile(
+        new_business_profile = BusinessProfileWebsiteAI(
             businessName = response.get("business_name", "N/A"),
             phoneNumber = response.get("business_phone_number", "N/A"),
             email = response.get("business_email", "N/A"),
@@ -126,11 +108,11 @@ def crawling_website(url: str , db : Session = Depends(get_db)):
     }
 
 @app.put('/update-business-profile')
-def update_business_profile(usePreLoadedVerticals: bool, profile : businessProfile , business_id : str = None, db : Session = Depends(get_db)):
+def update_business_profile(usePreLoadedVerticals: bool, profile : businessProfile_Website_ai , business_id : str = None, db : Session = Depends(get_db)):
     try:
-        business_profile = db.query(BusinessProfile).first()
+        business_profile = db.query(BusinessProfileWebsiteAI).first()
         if not business_profile:
-            new_business_profile = BusinessProfile(
+            new_business_profile = BusinessProfileWebsiteAI(
                 businessName = profile.business_name,
                 phoneNumber = profile.business_phone_number,
                 email = profile.business_email,
@@ -176,9 +158,9 @@ def update_business_profile(usePreLoadedVerticals: bool, profile : businessProfi
 
         if profile.manual_faqs:
             for faq in profile.manual_faqs:
-                existing_faq = db.query(Manual).filter(faq.question == Manual.question , Manual.business_id == business_profile.id).first()
+                existing_faq = db.query(ManualWebsiteAI).filter(faq.question == ManualWebsiteAI.question , ManualWebsiteAI.business_id == business_profile.id).first()
                 if not existing_faq:
-                    new_faq = Manual(
+                    new_faq = ManualWebsiteAI(
                         business_id = business_profile.id,
                         question = faq.question,
                         answer = faq.answer,
@@ -214,7 +196,7 @@ def update_business_profile(usePreLoadedVerticals: bool, profile : businessProfi
 @app.delete('/delete-manual-faq')
 def delete_manual_faq(faq_id : str , db : Session = Depends(get_db)):
     try:
-        faq = db.query(Manual).filter(Manual.id == faq_id).first()
+        faq = db.query(ManualWebsiteAI).filter(ManualWebsiteAI.id == faq_id).first()
         if not faq:
             return JSONResponse(
                 status_code=404,
@@ -241,11 +223,11 @@ def delete_manual_faq(faq_id : str , db : Session = Depends(get_db)):
                 "message" : str(e)
             }
         )
-
+    
 @app.get('/get-website-crawled-urls')
 def get_website_crawled_urls(db : Session = Depends(get_db)):
     try:
-        business_profile = db.query(BusinessProfile).first()
+        business_profile = db.query(BusinessProfileWebsiteAI).first()
         if not business_profile:
             return JSONResponse(
                 status_code=404,
@@ -271,11 +253,11 @@ def get_website_crawled_urls(db : Session = Depends(get_db)):
                 "message" : str(e)
             }
         )
-
+    
 @app.get('/get-business-profile-from-db')
 def get_business_profile_from_db(db : Session = Depends(get_db)):
     try:
-        business_profile = db.query(BusinessProfile).first()
+        business_profile = db.query(BusinessProfileWebsiteAI).first()
 
         if not business_profile:
             return JSONResponse(
@@ -311,50 +293,10 @@ def get_business_profile_from_db(db : Session = Depends(get_db)):
         }
     )
 
-@app.get("/get-business-profile")
-def get_business_profile(db : Session = Depends(get_db)):
-    try:
-        vectorstore = FAISS.load_local(
-                    file_path, 
-                    embeddings, 
-                    allow_dangerous_deserialization=True
-                )
-        response = ai_response.get_business_profile(vectorstore)
-    except Exception as e:
-        print(e)
-        return {"status": "error", "message": str(e)}
-    
-    try:
-        new_business_profile = BusinessProfile(
-            businessName = response.get("business_name", "N/A"),
-            phoneNumber = response.get("business_phone_number", "N/A"),
-            email = response.get("business_email", "N/A"),
-            address = response.get("business_address", "N/A"),
-            officeHours = response.get("business_working_hours", "N/A"),
-            services = response.get("business_services", []),
-            created_at = datetime.now()
-        )
-    except Exception as e:
-        print(f"Error creating BusinessProfile instance: {e}")
-        return {"status": "error", "message": str(e)}
-
-    db.add(new_business_profile)
-    db.commit()
-    db.refresh(new_business_profile)
-
-    return {
-        "status": "success", 
-        "message" : "Information retrived sucessfully",
-        "data" : {
-            "Business Information" : response
-        }
-
-    }
-
 @app.delete('/delete-business-profile')
 def delete_business_profile(db : Session = Depends(get_db)):
     try:
-        business_profile = db.query(BusinessProfile).first()
+        business_profile = db.query(BusinessProfileWebsiteAI).first()
         if not business_profile:
             return JSONResponse(
                 status_code=404,
@@ -381,12 +323,12 @@ def delete_business_profile(db : Session = Depends(get_db)):
             "message" : "Business profile deleted successfully"
         }
     )
-        
+
 @app.post("/add-preload-faqs_clinic")
-def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSClinic] , db : Session = Depends(get_db)):
+def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSClinic_Website_ai] , db : Session = Depends(get_db)):
     try:
         for faq in faqs:
-            new_faq = PreLoadedVerticalClinic(
+            new_faq = PreLoadedVerticalClinicWebsiteAI(
                 question = faq.question,
                 answer = faq.answer,
                 created_at = datetime.now()
@@ -404,7 +346,7 @@ def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSClinic] , db : Session = De
 @app.get('/get-preload-faqs_clinic')
 def get_preload_faqs(db : Session = Depends(get_db)):
     try:
-        faqs = db.query(PreLoadedVerticalClinic).all()
+        faqs = db.query(PreLoadedVerticalClinicWebsiteAI).all()
         data = []
         for faq in faqs:
             data.append({
@@ -414,7 +356,7 @@ def get_preload_faqs(db : Session = Depends(get_db)):
                 "created_at" : faq.created_at,
                 "source" : "template",
             })
-        manual_faqs = db.query(Manual).all()
+        manual_faqs = db.query(ManualWebsiteAI).all()
         for faq in manual_faqs:
             data.append({
                 "id" : str(faq.id),
@@ -432,9 +374,9 @@ def get_preload_faqs(db : Session = Depends(get_db)):
     }
 
 @app.put('/update-preload-faqs-clinic')
-def update_preload_faq(faq_id , faq_update: PreLoadedVerticalFAQSClinic, db: Session = Depends(get_db)):
+def update_preload_faq(faq_id , faq_update: PreLoadedVerticalFAQSClinic_Website_ai, db: Session = Depends(get_db)):
     try:
-        faq = db.query(PreLoadedVerticalClinic).filter(PreLoadedVerticalClinic.id == faq_id).first()
+        faq = db.query(PreLoadedVerticalClinicWebsiteAI).filter(PreLoadedVerticalClinicWebsiteAI.id == faq_id).first()
         if not faq:
             return {
                 "status" : "error",
@@ -459,7 +401,7 @@ def update_preload_faq(faq_id , faq_update: PreLoadedVerticalFAQSClinic, db: Ses
 @app.delete('/delete-preload-faqs-clinic')
 def delete_preload_faqs(faq_id , db: Session = Depends(get_db)):
     try:
-        faq = db.query(PreLoadedVerticalClinic).filter(PreLoadedVerticalClinic.id == faq_id).first()
+        faq = db.query(PreLoadedVerticalClinicWebsiteAI).filter(PreLoadedVerticalClinicWebsiteAI.id == faq_id).first()
         if not faq:
             return {
                 "success" : False,
@@ -478,10 +420,10 @@ def delete_preload_faqs(faq_id , db: Session = Depends(get_db)):
     }
 
 @app.post("/add-preload-faqs_cacs")
-def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSCACS] , db : Session = Depends(get_db)):
+def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSCACS_Website_ai] , db : Session = Depends(get_db)):
     try:
         for faq in faqs:
-            new_faq = PreLoadedVerticalCACS(
+            new_faq = PreLoadedVerticalCACSWebsiteAI(
                 question = faq.question,
                 answer = faq.answer,
                 created_at = datetime.now()
@@ -499,7 +441,7 @@ def add_preload_faqs(faqs: list[PreLoadedVerticalFAQSCACS] , db : Session = Depe
 @app.get('/get-preload-faqs_cacs')
 def get_preload_faqs(db : Session = Depends(get_db)):
     try:
-        faqs = db.query(PreLoadedVerticalCACS).all()
+        faqs = db.query(PreLoadedVerticalCACSWebsiteAI).all()
         data = []
         for faq in faqs:
             data.append({
@@ -509,7 +451,7 @@ def get_preload_faqs(db : Session = Depends(get_db)):
                 "created_at" : faq.created_at,
                 "source" : "template",
             })
-        manual_faqs = db.query(Manual).all()
+        manual_faqs = db.query(ManualWebsiteAI).all()
         for faq in manual_faqs:
             data.append({
                 "id" : str(faq.id),
@@ -527,9 +469,9 @@ def get_preload_faqs(db : Session = Depends(get_db)):
     }
 
 @app.put('/update-preload-faqs-cacs')
-def update_preload_faq(faq_id, faq_update: PreLoadedVerticalFAQSCACS, db: Session = Depends(get_db)):
+def update_preload_faq(faq_id, faq_update: PreLoadedVerticalFAQSCACS_Website_ai, db: Session = Depends(get_db)):
     try:
-        faq = db.query(PreLoadedVerticalCACS).filter(PreLoadedVerticalCACS.id == faq_id).first()
+        faq = db.query(PreLoadedVerticalCACSWebsiteAI).filter(PreLoadedVerticalCACSWebsiteAI.id == faq_id).first()
         if not faq:
             return {
                 "status" : "error",
@@ -554,7 +496,7 @@ def update_preload_faq(faq_id, faq_update: PreLoadedVerticalFAQSCACS, db: Sessio
 @app.delete('/delete-preload-faqs-cacs')
 def delete_preload_faqs(faq_id , db: Session = Depends(get_db)):
     try:
-        faq = db.query(PreLoadedVerticalCACS).filter(PreLoadedVerticalCACS.id == faq_id).first()
+        faq = db.query(PreLoadedVerticalCACSWebsiteAI).filter(PreLoadedVerticalCACSWebsiteAI.id == faq_id).first()
         if not faq:
             return {
                 "success" : False,
@@ -574,10 +516,10 @@ def delete_preload_faqs(faq_id , db: Session = Depends(get_db)):
     }
 
 @app.post('/add-manual-faqs')
-def add_manual_faqs(faqs: list[ManualFAQS] , business_id : str , db : Session = Depends(get_db)):
+def add_manual_faqs(faqs: list[ManualFAQS_Website_ai] , business_id : str , db : Session = Depends(get_db)):
     try:
         for faq in faqs:
-            new_faq = Manual(
+            new_faq = ManualWebsiteAI(
                 business_id = business_id,
                 question = faq.question,
                 answer = faq.answer,
@@ -601,11 +543,10 @@ def add_manual_faqs(faqs: list[ManualFAQS] , business_id : str , db : Session = 
         }
     )
 
-
 @app.get('/get-manual-faqs')
 def get_manual_faqs(business_id : str , db : Session = Depends(get_db)):
     try:
-        faqs = db.query(Manual).filter(Manual.business_id == business_id).all()
+        faqs = db.query(ManualWebsiteAI).filter(ManualWebsiteAI.business_id == business_id).all()
         data = []
         for faq in faqs:
             data.append({
@@ -634,7 +575,7 @@ def get_manual_faqs(business_id : str , db : Session = Depends(get_db)):
 @app.get('/get-conversations')
 def get_conversations(db: Session = Depends(get_db)):
     try:
-        conversations = db.query(Conversation).order_by(Conversation.created_at).all()
+        conversations = db.query(ConversationWebsiteAI).order_by(ConversationWebsiteAI.created_at).all()
         data = []
         for conv in conversations:
             data.append({
@@ -660,10 +601,11 @@ def get_conversations(db: Session = Depends(get_db)):
         }
     )
 
+
 @app.get('/get-analytics')
 def get_analytics(db : Session = Depends(get_db)):
     try:
-        conversations = db.query(Conversation).all()
+        conversations = db.query(ConversationWebsiteAI).all()
         total_queries_handled = len(conversations)
         average_response_time = round(sum(conv.response_time for conv in conversations) / total_queries_handled , 2) if total_queries_handled > 0 else 0
         escalated_queries = len([conv for conv in conversations if conv.escalated])
@@ -694,171 +636,57 @@ def get_analytics(db : Session = Depends(get_db)):
         )
 
 
-@app.get("/whatsapp/webhook")
-async def verify_webhook(request: Request):
-
-    mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
-    challenge = request.query_params.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return PlainTextResponse(challenge)
-
-    return PlainTextResponse("Verification failed", status_code=403)
-
-
-################ Websocket connection for real time communication with whatsapp ################
-
-
-manager = ConnectionManager()
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except:
-        manager.disconnect(websocket)
-
-
-main_app.include_router(app , tags=["websocket"])
-
-################ Websocket connection for real time communication with whatsapp ################
-
-
-@app.post("/whatsapp/webhook")
-async def whatsapp_webhook(request: Request , db : Session = Depends(get_db)):
-    business_profile = db.query(BusinessProfile).first()
-    data = await request.json()
-    print("data ----->" , data)
-
-    value = data['entry'][0]['changes'][0]['value']
-
-    if "messages" not in value:   
-        return {"status" : "ignored"}
-    
-    sender = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
-    if data["entry"][0]["changes"][0]["value"]["messages"][0]['type'] == "interactive" and data["entry"][0]["changes"][0]["value"]["messages"][0]["interactive"]["type"] == "nfm_reply":
-        # Extract form data from the flow submission
-        nfm_reply = data["entry"][0]["changes"][0]["value"]["messages"][0]["interactive"]["nfm_reply"]
-        flow_token = nfm_reply.get("flow_token")
-        response_json = nfm_reply.get("response_json")
-        
-        # Parse the response_json to get form fields
-        import json
+@app.post('/chat')
+def chat(query : str , db : Session = Depends(get_db)):
+    business_profile = db.query(BusinessProfileWebsiteAI).first()
+    vectorstore = None
+    if os.path.exists(file_path):
         try:
-            form_data = json.loads(response_json)
-            print(f"Form data submitted by {sender}: {form_data}")
-            new_data = {
-                "name" : form_data.get("name", "N/A"),
-                "doctor" : form_data.get("doctor", "N/A"),
-                "day" : form_data.get("day", "N/A"),
-                "time" : form_data.get("time", "N/A"),
-                "phone" : form_data.get("phone", "N/A"),
-            }
-            df = pd.DataFrame([new_data])
-            data = df.values.tolist()
-            sheet.append_row(data[0])
-            print("Data added to Google Sheet successfully")
-        except json.JSONDecodeError as e:
-            print(f"Error parsing form data: {e}")
-
-        await manager.broadcast({
-            "phone_number" : sender,
-            "message" : "Form Filled",
-            "timestamp" : datetime.now().isoformat()
-        })
-        await manager.broadcast({
-            "phone_number" : sender,
-            "response" : "Appointment is booked successfully. We will contact you soon to confirm the details.",
-            "timestamp" : datetime.now().isoformat()
-        })
-         
-        await send_whatsapp.send_whatsapp_message(sender , "Appointment is booked successfully. We will contact you soon to confirm the details.")
-        new_conversation = Conversation(
-            business_id = business_profile.id,
-            phone_number = sender,
-            user_message = "Form Filled",
-            bot_response = "Appointment is booked successfully. We will contact you soon to confirm the details.",
-            response_time = 0,
-            escalated = False,
-            created_at = datetime.now()
-            )
-        db.add(new_conversation)
-        db.commit()
-        return
-        
-    message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-    if "appointment" in message.lower() or "schedule" in message.lower() or "book" in message.lower():
-        await manager.broadcast({
-            "phone_number" : sender,
-            "message" : message,
-            "timestamp" : datetime.now().isoformat()
-        })
-        await manager.broadcast({
-            "phone_number" : sender,
-            "response" : "Please fill the form to book an appointment",
-            "timestamp" : datetime.now().isoformat()
-        })
-        await send_whatsapp.send_flow(sender)
-        new_conversation = Conversation(
-            business_id = business_profile.id,
-            phone_number = sender,
-            user_message = message,
-            bot_response = "Please fill the form to book an appointment",
-            response_time = 0,
-            escalated = False,
-            created_at = datetime.now()
-            )
-        db.add(new_conversation)
-        db.commit()
-        return
-    await manager.broadcast({
-        "phone_number" : sender,
-        "message" : message,
-        "timestamp" : datetime.now().isoformat()
-    })
-    try:
-        print("os.path.exists(file_path) --- >" , os.path.exists(file_path))
-        vectorstore = None
-        if os.path.exists(file_path):
             vectorstore = FAISS.load_local(
-                        file_path, 
-                        embeddings, 
-                        allow_dangerous_deserialization=True
-                    )
+                file_path, 
+                embeddings, 
+                allow_dangerous_deserialization=True
+            )
+        except Exception as e:
+            print(f"❌ Error loading vector store: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success" : False,
+                    "message" : "Error loading vector store"
+                }
+            )
+    try:
         start_time = time.time()
-        response = ai_response.create_rag_qa(vectorstore=vectorstore , query=message , session_id=sender , application_name="whatsapp_ai_receptionist")
+        response = ai_response.create_rag_qa(vectorstore=vectorstore , query=query , session_id="test_session" , application_name="website_ai")
         end_time = time.time()
         response_time = round(end_time - start_time , 2)
+        ai_reply = response['answer']
     except Exception as e:
-        print(f"❌ Error loading vector store from {e}")
-        ai_reply = "Sorry, I'm unable to process your request right now. Please try again later."
-        await send_whatsapp.send_whatsapp_message(sender, ai_reply)
-        return {"status": "error", "message": str(e)}
+        ai_reply = "Sorry, I'm having trouble retrieving the information right now. Please try again later."
 
 
-    ai_reply = response["answer"]
-    new_conversation = Conversation(
+    new_conversation = ConversationWebsiteAI(
         business_id = business_profile.id,
-        phone_number = sender,
-        user_message = message,
+        user_message = query,
         bot_response = ai_reply,
         response_time = response_time,
         escalated = response['escalated'],
         created_at = datetime.now()
     )
+
     db.add(new_conversation)
     db.commit()
 
-    await send_whatsapp.send_whatsapp_message(sender , ai_reply)
-    await manager.broadcast({
-        "phone_number" : sender,
-        "response" : ai_reply,
-        "timestamp" : datetime.now().isoformat()
-    })
+    return JSONResponse(
+        content={
+            "success" : True,
+            "data" : {
+                "response" : ai_reply,
+                "response_time_seconds" : response_time,
+                "escalated" : response['escalated']
+            }
+        }
+    )
 
-
-
-main_app.include_router(app , prefix="/api/receptionist" , tags=["Receptionist API"])
+main_app.include_router(app , prefix = '/api/website_ai' , tags = ['website_ai'])

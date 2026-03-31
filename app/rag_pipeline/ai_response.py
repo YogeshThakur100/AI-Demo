@@ -4,6 +4,7 @@ from prompts import clinic_prompt , ca_firm_prompt
 from langchain.chains import LLMChain
 import utilities
 from whatsapp_ai_receptionist.models.business_profile import BusinessProfile , PreLoadedVerticalClinic , PreLoadedVerticalCACS , Manual
+from website_ai.models.business_profile import BusinessProfileWebsiteAI , PreLoadedVerticalCACSWebsiteAI , PreLoadedVerticalClinicWebsiteAI , ManualWebsiteAI
 import json
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -12,11 +13,6 @@ business_info_cache = {}
 faq_cache = {}
 
 def get_preloaded_faqs(db: Session, persona: str):
-    """
-    Load preloaded FAQs based on the persona.
-    Returns FAQ content as a formatted string.
-    Uses existing helper methods for data retrieval.
-    """
     faq_key = f"faq_{persona}"
     
     if faq_key in faq_cache:
@@ -53,44 +49,79 @@ def get_preloaded_faqs(db: Session, persona: str):
         print(f"⚠️ Error loading preloaded FAQs: {e}")
         return ""
 
-def get_business_info(db : Session):
-    # if company_name not in business_info_cache:
-        business_info = db.query(BusinessProfile).first()
-        return business_info
+def get_business_info(db : Session, application_name: str):
+    match application_name:
+        case "whatsapp_ai_receptionist":
+            business_info = db.query(BusinessProfile).first()
+            return business_info
+        case "website_ai":
+            business_info = db.query(BusinessProfileWebsiteAI).first()
+            return business_info
+        case _:
+            return None
 
-def get_preloaded_faqs_clinic(db: Session):
+def get_preloaded_faqs_clinic(db: Session , application_name: str):
     try:
-        faqs = db.query(PreLoadedVerticalClinic).all()
-        data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
-        return data
+        match application_name:
+            case "whatsapp_ai_receptionist":
+                faqs = db.query(PreLoadedVerticalClinic).all()
+                data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
+                return data
+            case "website_ai":
+                faqs = db.query(PreLoadedVerticalClinic).all()
+                data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
+                return data
+            case _:
+                return {"status": "error", "message": "Invalid application name"}
     except Exception as e:
         print(f"❌ Error retrieving preloaded FAQs: {e}")
         return {"status": "error", "message": str(e)}
 
-def get_preloaded_faqs_cacs(db: Session):
+def get_preloaded_faqs_cacs(db: Session , application_name: str):
     try:
-        faqs = db.query(PreLoadedVerticalCACS).all()
-        data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
-        return data
+        match application_name:
+            case "whatsapp_ai_receptionist":
+                faqs = db.query(PreLoadedVerticalCACS).all()
+                data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
+                return data
+            case "website_ai":
+                faqs = db.query(PreLoadedVerticalCACSWebsiteAI).all()
+                data = [{"question": faq.question, "answer": faq.answer} for faq in faqs]
+                return data
+            case _:
+                return ""
     except Exception as e:
         print(f"❌ Error retrieving preloaded FAQs: {e}")
         return {"status": "error", "message": str(e)}
     
-def get_manual_faqs(db: Session):
+def get_manual_faqs(db: Session , application_name: str):
     try:
-        faqs = db.query(Manual).all()
-        if faqs:
-            faq_text = ""
-            for faq in faqs:
-                faq_text += f"\nQ: {faq.question}\nA: {faq.answer}\n"
-            return faq_text
-        else:
-            return ""
+        match application_name:
+            case "whatsapp_ai_receptionist":
+                faqs = db.query(Manual).all()
+                if faqs:
+                    faq_text = ""
+                    for faq in faqs:
+                        faq_text += f"\nQ: {faq.question}\nA: {faq.answer}\n"
+                    return faq_text
+                else:
+                    return ""
+            case "website_ai":
+                faqs = db.query(ManualWebsiteAI).all()
+                if faqs:
+                    faq_text = ""
+                    for faq in faqs:
+                        faq_text += f"\nQ: {faq.question}\nA: {faq.answer}\n"
+                    return faq_text
+                else:
+                    return ""
+            case _:
+                return ""
     except Exception as e:
         print(f"❌ Error retrieving manual FAQs: {e}")
         return {"status": "error", "message": str(e)}
 
-def create_rag_qa( query, session_id ,vectorstore=None, company_email = "yogeshthaur3100@gmail.com"):
+def create_rag_qa( query, session_id ,vectorstore=None, application_name = None, company_email = "yogeshthaur3100@gmail.com"):
     print("Vector store --->" , vectorstore)
     if vectorstore:
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
@@ -99,7 +130,7 @@ def create_rag_qa( query, session_id ,vectorstore=None, company_email = "yogesht
 
     db = SessionLocal()
     try:
-        business_info = get_business_info(db=db)
+        business_info = get_business_info(db=db , application_name=application_name)
         print(f"\n✅ Business info retrieved: {business_info}")
         
         if vectorstore:
@@ -112,10 +143,10 @@ def create_rag_qa( query, session_id ,vectorstore=None, company_email = "yogesht
         persona = business_info.business_type if business_info.business_type else "clinic"
         preloaded_faqs = ""
         if business_info.usePreLoadedVerticals:
-            preloaded_faqs = get_preloaded_faqs(db, persona)
+            preloaded_faqs = get_preloaded_faqs(db, persona , application_name)
         print(f"📚 Loaded preloaded FAQs ({persona}): {len(preloaded_faqs)} characters")
 
-        manual_faqs = get_manual_faqs(db)
+        manual_faqs = get_manual_faqs(db , application_name)
         print(f"📚 Loaded manual FAQs: {len(manual_faqs)} characters")
         manual_faqs = manual_faqs
         
