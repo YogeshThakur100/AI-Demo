@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 class ManualFAQS_Website_ai(BaseModel):
     question: str
@@ -25,3 +26,17 @@ class PreLoadedVerticalFAQSCACS_Website_ai(BaseModel):
     question: str
     answer: str
 
+class GradientItem(BaseModel):
+    color : list[str] | None = None
+    angle : int | None = None
+
+class GradientRequest(BaseModel):
+    header_gradient : Optional[GradientItem] = None
+    user_gradient : Optional[GradientItem] = None
+    chatbot_name : Optional[str] = None
+    chatbot_welcome_message : Optional[str] = None
+    
+class WebsiteChatbotUser(BaseModel):
+    user_name : str
+    user_email : Optional[str] = None
+    user_mobile_number : Optional[str] = None

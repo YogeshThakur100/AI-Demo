@@ -12,7 +12,7 @@ chat_history_store = {}
 business_info_cache = {}
 faq_cache = {}
 
-def get_preloaded_faqs(db: Session, persona: str):
+def get_preloaded_faqs(db: Session, persona: str , application_name : str):
     faq_key = f"faq_{persona}"
     
     if faq_key in faq_cache:
@@ -21,9 +21,9 @@ def get_preloaded_faqs(db: Session, persona: str):
     try:
         # Use existing helper methods that query the database correctly
         if persona == "clinic":
-            faqs_data = get_preloaded_faqs_clinic(db)
+            faqs_data = get_preloaded_faqs_clinic(db , application_name)
         elif persona == "ca_firm":
-            faqs_data = get_preloaded_faqs_cacs(db)
+            faqs_data = get_preloaded_faqs_cacs(db , application_name)
         else:
             return ""
         
