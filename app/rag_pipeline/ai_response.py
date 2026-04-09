@@ -1,16 +1,23 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from prompts import clinic_prompt , ca_firm_prompt
+from prompts import clinic_prompt , ca_firm_prompt , document_reader_clinic_prompt , document_reader_cacs_prompt
 from langchain.chains import LLMChain
+from langchain.schema import HumanMessage
 import utilities
 from whatsapp_ai_receptionist.models.business_profile import BusinessProfile , PreLoadedVerticalClinic , PreLoadedVerticalCACS , Manual
 from website_ai.models.business_profile import BusinessProfileWebsiteAI , PreLoadedVerticalCACSWebsiteAI , PreLoadedVerticalClinicWebsiteAI , ManualWebsiteAI
 import json
 from sqlalchemy.orm import Session
 from database import SessionLocal
+import base64
+from dotenv import find_dotenv, load_dotenv
 chat_history_store = {}
 business_info_cache = {}
 faq_cache = {}
+
+load_dotenv(find_dotenv())
+
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
 def get_preloaded_faqs(db: Session, persona: str , application_name : str):
     faq_key = f"faq_{persona}"
@@ -125,8 +132,6 @@ def create_rag_qa( query, session_id ,vectorstore=None, application_name = None,
     print("Vector store --->" , vectorstore)
     if vectorstore:
         retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
-   
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
     db = SessionLocal()
     try:
@@ -193,6 +198,7 @@ def create_rag_qa( query, session_id ,vectorstore=None, application_name = None,
     if "We don't have the information currently" in response_text and company_email:
         print("❓ Unknown question asked, sending email to admin...")
         print(f"Company email to notify: {company_email}")
+        response_text = "We dont have the information currently. We have escalated your query to our team and will get back to you shortly."
         escalated = True
         # try:
         #     utilities.Utilities_class.send_email_ai_response(company_email, query)
@@ -295,3 +301,26 @@ def get_business_profile(vectorstore):
         "business_working_hours": business_info.get("business_working_hours", "Not found in context"),
         "business_services": business_info.get("business_services", ["Not found in context"])
     }
+
+
+def encode_image(image_path):
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+    
+
+def document_reader(file_path , persona : str):
+    image_base64 = encode_image(file_path)
+
+    human_message = HumanMessage(
+        content = [
+            {"type" : "text" , "text" : "Extract the information from the image based on the system prompt instructions."},
+            {"type" : "image_url" , "image_url" : {
+                "url" : f"data:image/png;base64,{image_base64}"
+            }}
+        ]
+    )
+
+
+    response = llm.invoke([document_reader_cacs_prompt if persona == "cacs" else document_reader_clinic_prompt , human_message])
+
+    return (response.content)
