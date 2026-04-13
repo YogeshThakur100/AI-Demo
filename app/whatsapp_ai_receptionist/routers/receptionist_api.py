@@ -790,7 +790,7 @@ async def whatsapp_webhook(request: Request , db : Session = Depends(get_db)):
         return
         
     message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-    if "appointment" in message.lower() or "schedule" in message.lower() or "book" in message.lower():
+    if "appointment" in message.lower() or "schedule" in message.lower():
         await manager.broadcast({
             "phone_number" : sender,
             "message" : message,
@@ -823,7 +823,7 @@ async def whatsapp_webhook(request: Request , db : Session = Depends(get_db)):
         print("os.path.exists(file_path) --- >" , os.path.exists(file_path))
         vectorstore = None
         if os.path.exists(file_path):
-            vectorstore = FAISS.load_local(
+            vectorstore = FAISS.load_local(   
                         file_path, 
                         embeddings, 
                         allow_dangerous_deserialization=True
