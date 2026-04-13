@@ -3,8 +3,8 @@ import time
 import gc
 import shutil
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS\
 
 
 def build_vectorstore(save_path,user_email=None, website_docs=None, pdf_docs=None):
